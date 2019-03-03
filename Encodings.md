@@ -27,59 +27,53 @@ This file contains the specification of all supported encodings.
 Supported Types: all
 
 This is the plain encoding that must be supported for types.  It is
-intended to be the simplest encoding.  Values are encoded back to back.
+intended to be the simplest encoding.  Values are encoded back to back. 
 
-The plain encoding is used whenever a more efficient encoding can not be used. It
+The plain encoding is used whenever a more efficient encoding can not be used. It 
 stores the data in the following format:
  - BOOLEAN: [Bit Packed](#RLE), LSB first
  - INT32: 4 bytes little endian
  - INT64: 8 bytes little endian
- - INT96: 12 bytes little endian (deprecated)
+ - INT96: 12 bytes little endian
  - FLOAT: 4 bytes IEEE little endian
  - DOUBLE: 8 bytes IEEE little endian
  - BYTE_ARRAY: length in 4 bytes little endian followed by the bytes contained in the array
  - FIXED_LEN_BYTE_ARRAY: the bytes contained in the array
 
 For native types, this outputs the data as little endian. Floating
-    point types are encoded in IEEE.
+    point types are encoded in IEEE.  
 
 For the byte array type, it encodes the length as a 4 byte little
 endian, followed by the bytes.
 
-### Dictionary Encoding (PLAIN_DICTIONARY = 2 and RLE_DICTIONARY = 8)
-The dictionary encoding builds a dictionary of values encountered in a given column. The
+### Dictionary Encoding (PLAIN_DICTIONARY = 2)
+The dictionary encoding builds a dictionary of values encountered in a given column. The 
 dictionary will be stored in a dictionary page per column chunk. The values are stored as integers
 using the [RLE/Bit-Packing Hybrid](#RLE) encoding. If the dictionary grows too big, whether in size
-or number of distinct values, the encoding will fall back to the plain encoding. The dictionary page is
+or number of distinct values, the encoding will fall back to the plain encoding. The dictionary page is 
 written first, before the data pages of the column chunk.
 
-Dictionary page format: the entries in the dictionary - in dictionary order - using the [plain](#PLAIN) encoding.
+Dictionary page format: the entries in the dictionary - in dictionary order - using the [plain](#PLAIN) enncoding.
 
 Data page format: the bit width used to encode the entry ids stored as 1 byte (max bit width = 32),
 followed by the values encoded using RLE/Bit packed described above (with the given bit width).
 
-Using the PLAIN_DICTIONARY enum value is deprecated in the Parquet 2.0 specification. Prefer using RLE_DICTIONARY
-in a data page and PLAIN in a dictionary page for Parquet 2.0+ files.
-
 ### <a name="RLE"></a>Run Length Encoding / Bit-Packing Hybrid (RLE = 3)
-
 This encoding uses a combination of bit-packing and run length encoding to more efficiently store repeated values.
 
 The grammar for this encoding looks like this, given a fixed bit-width known in advance:
 ```
 rle-bit-packed-hybrid: <length> <encoded-data>
-length := length of the <encoded-data> in bytes stored as 4 bytes little endian (unsigned int32)
+length := length of the <encoded-data> in bytes stored as 4 bytes little endian
 encoded-data := <run>*
-run := <bit-packed-run> | <rle-run>
-bit-packed-run := <bit-packed-header> <bit-packed-values>
-bit-packed-header := varint-encode(<bit-pack-scaled-run-len> << 1 | 1)
-// we always bit-pack a multiple of 8 values at a time, so we only store the number of values / 8
-bit-pack-scaled-run-len := (bit-packed-run-len) / 8
-bit-packed-run-len := *see 3 below*
-bit-packed-values := *see 1 below*
-rle-run := <rle-header> <repeated-value>
-rle-header := varint-encode( (rle-run-len) << 1)
-rle-run-len := *see 3 below*
+run := <bit-packed-run> | <rle-run>  
+bit-packed-run := <bit-packed-header> <bit-packed-values>  
+bit-packed-header := varint-encode(<bit-pack-count> << 1 | 1)  
+// we always bit-pack a multiple of 8 values at a time, so we only store the number of values / 8  
+bit-pack-count := (number of values in this run) / 8  
+bit-packed-values := *see 1 below*  
+rle-run := <rle-header> <repeated-value>  
+rle-header := varint-encode( (number of times repeated) << 1)  
 repeated-value := value that is repeated, using a fixed-width of round-up-to-next-byte(bit-width)
 ```
 
@@ -88,14 +82,14 @@ repeated-value := value that is repeated, using a fixed-width of round-up-to-nex
    though the order of the bits in each value remains in the usual order of most significant to least
    significant. For example, to pack the same values as the example in the deprecated encoding above:
 
-   The numbers 1 through 7 using bit width 3:
+   The numbers 1 through 7 using bit width 3:  
    ```
    dec value: 0   1   2   3   4   5   6   7
    bit value: 000 001 010 011 100 101 110 111
    bit label: ABC DEF GHI JKL MNO PQR STU VWX
    ```
-
-   would be encoded like this where spaces mark byte boundaries (3 bytes):
+   
+   would be encoded like this where spaces mark byte boundaries (3 bytes):  
    ```
    bit value: 10001000 11000110 11111010
    bit label: HIDEFABC RMNOJKLG VWXSTUPQ
@@ -107,24 +101,9 @@ repeated-value := value that is repeated, using a fixed-width of round-up-to-nex
    shifting and ORing with a mask. (to make this optimization work on a big-endian machine,
    you would have to use the ordering used in the [deprecated bit-packing](#BITPACKED) encoding)
 
-2. varint-encode() is ULEB-128 encoding, see https://en.wikipedia.org/wiki/LEB128
-
-3. bit-packed-run-len and rle-run-len must be in the range \[1, 2<sup>31</sup> - 1\].
-   This means that a Parquet implementation can always store the run length in a signed
-   32-bit integer. This length restriction was not part of the Parquet 2.5.0 and earlier
-   specifications, but longer runs were not readable by the most common Parquet
-   implementations so, in practice, were not safe for Parquet writers to emit.
-
-
-Note that the RLE encoding method is only supported for the following types of
-data:
-
-* Repetition and definition levels
-* Dictionary indices
-* Boolean values in data pages, as an alternative to PLAIN encoding
+2. varint-encode() is ULEB-128 encoding, see http://en.wikipedia.org/wiki/Variable-length_quantity
 
 ### <a name="BITPACKED"></a>Bit-packed (Deprecated) (BIT_PACKED = 4)
-
 This is a bit-packed only encoding, which is deprecated and will be replaced by the [RLE/bit-packing](#RLE) hybrid encoding.
 Each value is encoded back to back using a fixed width.
 There is no padding between values (except for the last byte) which is padded with 0s.
@@ -135,20 +114,17 @@ This implementation is deprecated because the [RLE/bit-packing](#RLE) hybrid is 
 For compatibility reasons, this implementation packs values from the most significant bit to the least significant bit,
 which is not the same as the [RLE/bit-packing](#RLE) hybrid.
 
-For example, the numbers 1 through 7 using bit width 3:
+For example, the numbers 1 through 7 using bit width 3:  
 ```
 dec value: 0   1   2   3   4   5   6   7
 bit value: 000 001 010 011 100 101 110 111
 bit label: ABC DEF GHI JKL MNO PQR STU VWX
 ```
-would be encoded like this where spaces mark byte boundaries (3 bytes):
+would be encoded like this where spaces mark byte boundaries (3 bytes):  
 ```
 bit value: 00000101 00111001 01110111
 bit label: ABCDEFGH IJKLMNOP QRSTUVWX
 ```
-
-Note that the BIT_PACKED encoding method is only supported for encoding
-repetition and definition levels.
 
 ### <a name="DELTAENC"></a>Delta Encoding (DELTA_BINARY_PACKED = 5)
 Supported Types: INT32, INT64
@@ -165,7 +141,7 @@ The header is defined as follows:
  * the total value count is stored as a VLQ int
  * the first value is stored as a zigzag VLQ int
 
-Each block contains
+Each block contains 
 ```
 <min delta> <list of bitwidths of miniblocks> <miniblocks>
 ```
@@ -222,7 +198,7 @@ The encoded data is
 8 (block size), 1 (miniblock count), 8 (value count), 7 (first value)
 
  block
--2 (minimum delta), 2 (bitwidth), 00000011111111b (0,0,0,3,3,3,3 packed on 2 bits)
+0 (minimum delta), 2 (bitwidth), 000000111111b (0,0,0,3,3,3 packed on 2 bits)
 
 #### Characteristics
 This encoding is similar to the [RLE/bit-packing](#RLE) encoding. However the [RLE/bit-packing](#RLE) encoding is specifically used when the range of ints is small over the entire page, as is true of repetition and definition levels. It uses a single bit width for the whole page.
@@ -254,7 +230,7 @@ Supported Types: BYTE_ARRAY
 This is also known as incremental encoding or front compression: for each element in a
 sequence of strings, store the prefix length of the previous entry plus the suffix.
 
-For a longer description, see https://en.wikipedia.org/wiki/Incremental_encoding.
+For a longer description, see http://en.wikipedia.org/wiki/Incremental_encoding.
 
 This is stored as a sequence of delta-encoded prefix lengths (DELTA_BINARY_PACKED), followed by
-the suffixes encoded as delta length byte arrays (DELTA_LENGTH_BYTE_ARRAY).
+the suffixes encoded as delta length byte arrays (DELTA_LENGTH_BYTE_ARRAY). 

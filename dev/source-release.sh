@@ -58,7 +58,8 @@ git archive $release_hash --prefix $tag/ -o $tarball
 
 # sign the archive
 gpg --armor --output ${tarball}.asc --detach-sig $tarball
-shasum -a 512 $tarball > ${tarball}.sha512
+gpg --print-md MD5 $tarball > ${tarball}.md5
+shasum $tarball > ${tarball}.sha
 
 # check out the parquet RC folder
 svn co --depth=empty https://dist.apache.org/repos/dist/dev/parquet tmp

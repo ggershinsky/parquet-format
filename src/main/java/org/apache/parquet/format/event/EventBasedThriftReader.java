@@ -34,10 +34,8 @@ import org.apache.parquet.format.event.TypedConsumer.SetConsumer;
  * Event based reader for Thrift
  *
  * @author Julien Le Dem
- * @deprecated java code moved to the parquet-mr project: See org.apache.parquet:parquet-format-structures; Will be
- *             removed from here
+ *
  */
-@Deprecated
 public final class EventBasedThriftReader {
 
   private final TProtocol protocol;

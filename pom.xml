@@ -28,7 +28,7 @@
 
   <groupId>org.apache.parquet</groupId>
   <artifactId>parquet-format</artifactId>
-  <version>2.7.0-SNAPSHOT</version>
+  <version>2.3.1-GG</version>
   <packaging>jar</packaging>
 
   <name>Apache Parquet Format</name>
@@ -38,8 +38,8 @@
   <scm>
     <connection>scm:git:git@github.com:apache/parquet-format.git</connection>
     <url>scm:git:git@github.com:apache/parquet-format.git</url>
-    <developerConnection>scm:git:git@github.com:apache/parquet-format.git</developerConnection>
-    <tag>HEAD</tag>
+    <developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/parquet-format.git</developerConnection>
+    <tag>apache-parquet-format-2.3.1</tag>
   </scm>
 
   <licenses>
@@ -86,21 +86,17 @@
     <maven.compiler.source>1.6</maven.compiler.source>
     <maven.compiler.target>1.6</maven.compiler.target>
     <shade.prefix>shaded.parquet</shade.prefix>
-    <thrift.executable>thrift</thrift.executable>
-    <thrift.version>0.9.3</thrift.version>
-    <thrift-maven-plugin.version>0.10.0</thrift-maven-plugin.version>
   </properties>
 
   <build>
     <plugins>
       <!-- thrift -->
       <plugin>
-        <groupId>org.apache.thrift</groupId>
-        <artifactId>thrift-maven-plugin</artifactId>
-        <version>${thrift-maven-plugin.version}</version>
+        <groupId>org.apache.thrift.tools</groupId>
+        <artifactId>maven-thrift-plugin</artifactId>
+        <version>0.1.11</version>
         <configuration>
-          <thriftSourceRoot>src/main/thrift</thriftSourceRoot>
-          <thriftExecutable>${thrift.executable}</thriftExecutable>
+          <thriftSourceRoot>src/thrift</thriftSourceRoot>
         </configuration>
         <executions>
           <execution>
@@ -121,13 +117,6 @@
             <phase>none</phase>
           </execution>
         </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <configuration>
-          <additionalparam>-Xdoclint:none</additionalparam>
-        </configuration>
       </plugin>
       <plugin>
         <!-- Override source and target from the ASF parent -->
@@ -152,9 +141,18 @@
               <artifactSet>
                 <includes>
                   <include>org.apache.thrift:libthrift</include>
+                  <include>org.slf4j:slf4j-api</include>
+                  <include>org.slf4j:slf4j-nop</include>
                 </includes>
               </artifactSet>
               <filters>
+                <filter>
+                  <!-- Exclude SLF4J's meta files, covered by LICENSE and NOTICE -->
+                  <artifact>org.slf4j:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/**/*</exclude>
+                  </excludes>
+                </filter>
                 <filter>
                   <!-- Sigh. The Thrift jar contains its source -->
                   <artifact>org.apache.thrift:libthrift</artifact>
@@ -170,6 +168,10 @@
                   <pattern>org.apache.thrift</pattern>
                   <shadedPattern>${shade.prefix}.org.apache.thrift</shadedPattern>
                 </relocation>
+                <relocation>
+                  <pattern>org.slf4j</pattern>
+                  <shadedPattern>${shade.prefix}.org.slf4j</shadedPattern>
+                </relocation>
               </relocations>
             </configuration>
           </execution>
@@ -178,7 +180,6 @@
       <plugin>
         <groupId>org.apache.rat</groupId>
         <artifactId>apache-rat-plugin</artifactId>
-        <version>0.12</version>
         <executions>
           <execution>
             <phase>test</phase>
@@ -188,7 +189,6 @@
           </execution>
         </executions>
         <configuration>
-          <consoleOutput>true</consoleOutput>
           <excludes>
             <exclude>**/*.avro</exclude>
             <exclude>**/*.avsc</exclude>
@@ -202,11 +202,13 @@
             <exclude>**/build/**</exclude>
             <exclude>**/target/**</exclude>
             <exclude>.git/**</exclude>
+            <exclude>.gitignore</exclude>
             <exclude>.idea/**</exclude>
             <exclude>*/jdiff/*.xml</exclude>
+            <exclude>.travis.yml</exclude>
             <exclude>licenses/**</exclude>
-            <exclude>thrift-${thrift.version}/**</exclude>
-            <exclude>thrift-${thrift.version}.tar.gz</exclude>
+            <exclude>thrift-0.7.0/**</exclude>
+            <exclude>thrift-0.7.0.tar.gz</exclude>
           </excludes>
         </configuration>
       </plugin>
@@ -217,12 +219,17 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-      <version>1.7.12</version>
+      <version>1.7.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-nop</artifactId>
+      <version>1.7.2</version>
     </dependency>
     <dependency>
       <groupId>org.apache.thrift</groupId>
       <artifactId>libthrift</artifactId>
-      <version>${thrift.version}</version>
+      <version>0.7.0</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -231,48 +238,4 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
-  <profiles>
-    <profile>
-      <activation>
-        <os>
-          <family>!windows</family>
-        </os>
-      </activation>
-      <id>UnixClassOS</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>exec-maven-plugin</artifactId>
-            <version>1.2.1</version>
-            <executions>
-              <execution>
-                <id>check-thrift-version</id>
-                <phase>generate-sources</phase>
-                <goals>
-                  <goal>exec</goal>
-                </goals>
-                <configuration>
-                  <executable>sh</executable>
-                  <workingDirectory>${basedir}</workingDirectory>
-                  <arguments>
-                    <argument>-c</argument>
-                    <argument>${thrift.executable} -version | fgrep 'Thrift version ${thrift.version}' &amp;&amp; exit 0;
-                      echo "=================================================================================";
-                      echo "========== [FATAL] Build is configured to require Thrift version ${thrift.version} ==========";
-                      echo -n "========== Currently installed: ";
-                      ${thrift.executable} -version;
-                      echo "=================================================================================";
-                      exit 1
-                    </argument>
-                  </arguments>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-  </profiles>
 </project>

@@ -29,179 +29,46 @@ This file contains the specification for all logical types.
 
 ### Metadata
 
-The parquet format's `LogicalType` stores the type annotation. The annotation
+The parquet format's `ConvertedType` stores the type annotation. The annotation
 may require additional metadata fields, as well as rules for those fields.
-There is an older representation of the logical type annotations called `ConvertedType`.
-To support backward compatibility with old files, readers should interpret `LogicalTypes`
-in the same way as `ConvertedType`, and writers should populate `ConvertedType` in the metadata
-according to well defined conversion rules.
 
-### Compatibility
+### UTF8 (Strings)
 
-The Thrift definition of the metadata has two fields for logical types: `ConvertedType` and `LogicalType`.
-`ConvertedType` is an enum of all available annotation. Since Thrift enums can't have additional type parameters,
-it is cumbersome to define additional type parameters, like decimal scale and precision
-(which are additional 32 bit integer fields on SchemaElement, and are relevant only for decimals) or time unit
-and UTC adjustment flag for Timestamp types. To overcome this problem, a new logical type representation was introduced into
-the metadata to replace `ConvertedType`: `LogicalType`.  The new representation is a union of struct of logical types,
-this way allowing more flexible API, logical types can have type parameters.
-
-However, to maintain compatibility, Parquet readers should be able to read
-and interpret old logical type representation (in case the new one is not present,
-because the file was written by older writer), and write `ConvertedType` field for old readers.
-
-Compatibility considerations are mentioned for each annotation in the corresponding section.
-
-## String Types
-
-### STRING
-
-`STRING` may only be used to annotate the binary primitive type and indicates
+`UTF8` may only be used to annotate the binary primitive type and indicates
 that the byte array should be interpreted as a UTF-8 encoded character string.
-
-The sort order used for `STRING` strings is unsigned byte-wise comparison.
-
-*Compatibility*
-
-`STRING` corresponds to `UTF8` ConvertedType.
-
-### ENUM
-
-`ENUM` annotates the binary primitive type and indicates that the value
-was converted from an enumerated type in another data model (e.g. Thrift, Avro, Protobuf).
-Applications using a data model lacking a native enum type should interpret `ENUM`
-annotated field as a UTF-8 encoded string. 
-
-The sort order used for `ENUM` values is unsigned byte-wise comparison.
-
-### UUID
-
-`UUID` annotates a 16-byte fixed-length binary. The value is encoded using
-big-endian, so that `00112233-4455-6677-8899-aabbccddeeff` is encoded as the
-bytes `00 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff`
-(This example is from [wikipedia's UUID page][wiki-uuid]).
-
-The sort order used for `UUID` values is unsigned byte-wise comparison.
-
-[wiki-uuid]: https://en.wikipedia.org/wiki/Universally_unique_identifier
 
 ## Numeric Types
 
 ### Signed Integers
 
-`INT` annotation can be used to specify the maximum number of bits in the stored value.
-The annotation has two parameter: bit width and sign.
-Allowed bit width values are `8`, `16`, `32`, `64`, and sign can be `true` or `false`.
-For signed integers, the second parameter should be `true`,
-for example, a signed integer with bit width of 8 is defined as `INT(8, true)`
-Implementations may use these annotations to produce smaller
-in-memory representations when reading data.
+`INT_8`, `INT_16`, `INT_32`, and `INT_64` annotations can be used to specify
+the maximum number of bits in the stored value.  Implementations may use these
+annotations to produce smaller in-memory representations when reading data.
 
 If a stored value is larger than the maximum allowed by the annotation, the
 behavior is not defined and can be determined by the implementation.
 Implementations must not write values that are larger than the annotation
 allows.
-
-`INT(8, true)`, `INT(16, true)`, and `INT(32, true)` must annotate an `int32` primitive type and
-`INT(64, true)` must annotate an `int64` primitive type. `INT(32, true)` and `INT(64, true)` are
-implied by the `int32` and `int64` primitive types if no other annotation is
-present and should be considered optional.
-
-The sort order used for signed integer types is signed.
-
-### Unsigned Integers
-
-`INT` annotation can be used to specify unsigned integer types,
-along with a maximum number of bits in the stored value.
-The annotation has two parameter: bit width and sign.
-Allowed bit width values are `8`, `16`, `32`, `64`, and sign can be `true` or `false`.
-In case of unsigned integers, the second parameter should be `false`,
-for example, an unsigned integer with bit width of 8 is defined as `INT(8, false)`
-Implementations may use these annotations to produce smaller
-in-memory representations when reading data.
-
-If a stored value is larger than the maximum allowed by the annotation, the
-behavior is not defined and can be determined by the implementation.
-Implementations must not write values that are larger than the annotation
-allows.
-
-`INT(8, false)`, `INT(16, false)`, and `INT(32, false)` must annotate an `int32` primitive type and
-`INT(64, true)` must annotate an `int64` primitive type.
-
-The sort order used for unsigned integer types is unsigned.
-
-### Deprecated integer ConvertedType
-
-`INT_8`, `INT_16`, `INT_32`, and `INT_64` annotations can be also used to specify
-signed integers with 8, 16, 32, or 64 bit width.
 
 `INT_8`, `INT_16`, and `INT_32` must annotate an `int32` primitive type and
 `INT_64` must annotate an `int64` primitive type. `INT_32` and `INT_64` are
 implied by the `int32` and `int64` primitive types if no other annotation is
 present and should be considered optional.
 
-`UINT_8`, `UINT_16`, `UINT_32`, and `UINT_64` annotations can be also used to specify
-unsigned integers with 8, 16, 32, or 64 bit width.
+### Unsigned Integers
+
+`UINT_8`, `UINT_16`, `UINT_32`, and `UINT_64` annotations can be used to
+specify unsigned integer types, along with a maximum number of bits in the
+stored value. Implementations may use these annotations to produce smaller
+in-memory representations when reading data.
+
+If a stored value is larger than the maximum allowed by the annotation, the
+behavior is not defined and can be determined by the implementation.
+Implementations must not write values that are larger than the annotation
+allows.
 
 `UINT_8`, `UINT_16`, and `UINT_32` must annotate an `int32` primitive type and
 `UINT_64` must annotate an `int64` primitive type.
-
-*Backward compatibility:*
-
-| ConvertedType | LogicalType |
-|---------------|-------------|
-| INT_8  | IntType (bitWidth = 8, isSigned = true) |
-| INT_16 | IntType (bitWidth = 16, isSigned = true) |
-| INT_32 | IntType (bitWidth = 32, isSigned = true) |
-| INT_64 | IntType (bitWidth = 64, isSigned = true) |
-| UINT_8  | IntType (bitWidth = 8, isSigned = false) |
-| UINT_16 | IntType (bitWidth = 16, isSigned = false) |
-| UINT_32 | IntType (bitWidth = 32, isSigned = false) |
-| UINT_64 | IntType (bitWidth = 64, isSigned = false) |
-
-*Forward compatibility:*
-
-<table>
-    <tr colspan="3">
-        <th colspan="3">LogicalType</th>
-        <th>ConvertedType</th>
-    </tr>
-    <tr>
-        <td rowspan="8">IntType</td>
-        <td rowspan="4">isSigned</td>
-        <td>bitWidth = 8</td>
-        <td>INT_8</td>
-    </tr>
-    <tr>
-        <td>bitWidth = 16</td>
-        <td>INT_16</td>
-    </tr>
-    <tr>
-        <td>bitWidth = 32</td>
-        <td>INT_32</td>
-    </tr>
-    <tr>
-        <td>bitWidth = 64</td>
-        <td>INT_64</td>
-    </tr>
-    <tr>
-        <td rowspan="4">!isSigned</td>
-        <td>bitWidth = 8</td>
-        <td>UINT_8</td>
-    </tr>
-    <tr>
-        <td>bitWidth = 16</td>
-        <td>UINT_16</td>
-    </tr>
-    <tr>
-        <td>bitWidth = 32</td>
-        <td>UINT_32</td>
-    </tr>
-    <tr>
-        <td>bitWidth = 64</td>
-        <td>UINT_64</td>
-    </tr>
-</table>
 
 ### DECIMAL
 
@@ -221,26 +88,15 @@ integer. A precision too large for the underlying type (see below) is an error.
 
 `DECIMAL` can be used to annotate the following types:
 * `int32`: for 1 &lt;= precision &lt;= 9
-* `int64`: for 1 &lt;= precision &lt;= 18; precision &lt; 10 will produce a
+* `int64`: for 1 &lt;= precision &lt;= 18; precision &lt;= 10 will produce a
   warning
 * `fixed_len_byte_array`: precision is limited by the array size. Length `n`
   can store &lt;= `floor(log_10(2^(8*n - 1) - 1))` base-10 digits
 * `binary`: `precision` is not limited, but is required. The minimum number of
   bytes to store the unscaled value should be used.
 
-The sort order used for `DECIMAL` values is signed comparison of the represented
-value.
-
-If the column uses `int32` or `int64` physical types, then signed comparison of
-the integer values produces the correct ordering. If the physical type is
-fixed, then the correct ordering can be produced by flipping the
-most-significant bit in the first byte and then using unsigned byte-wise
-comparison.
-
-*Compatibility*
-
-To support compatibility with older readers, implementations of parquet-format should
-write `DecimalType` precision and scale into the corresponding SchemaElement field in metadata.
+A `SchemaElement` with the `DECIMAL` `ConvertedType` must also have both
+`scale` and `precision` fields set, even if scale is 0 by default.
 
 ## Date/Time Types
 
@@ -250,115 +106,29 @@ write `DecimalType` precision and scale into the corresponding SchemaElement fie
 annotate an `int32` that stores the number of days from the Unix epoch, 1
 January 1970.
 
-The sort order used for `DATE` is signed.
+### TIME\_MILLIS
 
-### TIME
-
-`TIME` is used for a logical time type without a date with millisecond or microsecond precision.
-The type has two type parameters: UTC adjustment (`true` or `false`)
-and precision (`MILLIS` or `MICROS`, `NANOS`).
-
-`TIME` with precision `MILLIS` is used for millisecond precision.
-It must annotate an `int32` that stores the number of
+`TIME_MILLIS` is used for a logical time type with millisecond precision,
+without a date. It must annotate an `int32` that stores the number of
 milliseconds after midnight.
 
-`TIME` with precision `MICROS` is used for microsecond precision.
-It must annotate an `int64` that stores the number of
+### TIME\_MICROS
+
+`TIME_MICROS` is used for a logical time type with microsecond precision,
+without a date. It must annotate an `int64` that stores the number of
 microseconds after midnight.
 
-`TIME` with precision `NANOS` is used for nanosecond precision.
-It must annotate an `int64` that stores the number of
-nanoseconds after midnight.
+### TIMESTAMP\_MILLIS
 
-The sort order used for `TIME` is signed.
-
-#### Deprecated time ConvertedType
-
-`TIME_MILLIS` is the deprecated ConvertedType counterpart of `TIME` logical type
-with precision `MILLIS`. Like the logical type counterpart, it must annotate an `int32`
-
-`TIME_MICROS` is the deprecated ConvertedType counterpart of `TIME` logical type
-with precision `MICROS`. Like the logical type counterpart, it must annotate an `int64`
-
-*Backward compatibility:*
-
-| ConvertedType | LogicalType |
-|---------------|-------------|
-| TIME_MILLIS | TimeType (isAdjustedToUTC = true, unit = MILLIS) |
-| TIME_MICROS | TimeType (isAdjustedToUTC = true, unit = MICROS) |
-
-*Forward compatibility:*
-
-<table>
-    <tr colspan="3">
-        <th colspan="3">LogicalType</th>
-        <th>ConvertedType</th>
-    </tr>
-    <tr>
-        <td rowspan="2" colspan="2">TimeType</td>
-        <td>unit = MILLIS</td>
-        <td>TIME_MILLIS</td>
-    </tr>
-    <tr>
-        <td>unit = MICROS</td>
-        <td>TIME_MICROS</td>
-    </tr>
-</table>
-
-### TIMESTAMP
-
-`TIMESTAMP` is used for a combined logical date and time type, with
-millisecond or microsecond precision. The type has two type parameters:
-UTC adjustment (`true` or `false`) and precision (`MILLIS` or `MICROS`, `NANOS`).
-
-`TIMESTAMP` with precision `MILLIS` is used for millisecond precision.
-It must annotate an `int64` that stores the number of
+`TIMESTAMP_MILLIS` is used for a combined logical date and time type, with
+millisecond precision. It must annotate an `int64` that stores the number of
 milliseconds from the Unix epoch, 00:00:00.000 on 1 January 1970, UTC.
 
-`TIMESTAMP` with precision `MICROS` is used for microsecond precision.
-It must annotate an `int64` that stores the number of
+### TIMESTAMP\_MICROS
+
+`TIMESTAMP_MICROS` is used for a combined logical date and time type with
+microsecond precision. It must annotate an `int64` that stores the number of
 microseconds from the Unix epoch, 00:00:00.000000 on 1 January 1970, UTC.
-
-`TIMESTAMP` with precision `NANOS` is used for nanosecond precision.
-It must annotate an `int64` that stores the number of
-nanoseconds from the Unix epoch, 00:00:00.000000000 on 1 January 1970, UTC.
-Valid values for nanosecond precision are between
-00:12:43 21 September 1677 UTC and 23:47:16 11 April 2262 UTC.
-
-The sort order used for `TIMESTAMP` is signed.
-
-#### Deprecated timestamp ConvertedType
-
-`TIMESTAMP_MILLIS` is the deprecated ConvertedType counterpart of `TIMESTAMP` logical type
-with precision `MILLIS`. Like the logical type counterpart, it must annotate an `int64`
-
-`TIMESTAMP_MICROS` is the deprecated ConvertedType counterpart of `TIMESTAMP` logical type
-with precision `MICROS`. Like the logical type counterpart, it must annotate an `int64`
-
-*Backward compatibility:*
-
-| ConvertedType | LogicalType |
-|---------------|-------------|
-| TIMESTAMP_MILLIS | TimestampType (isAdjustedToUTC = true, unit = MILLIS) |
-| TIMESTAMP_MICROS | TimestampType (isAdjustedToUTC = true, unit = MICROS) |
-
-*Forward compatibility:*
-
-<table>
-    <tr colspan="3">
-        <th colspan="3">LogicalType</th>
-        <th>ConvertedType</th>
-    </tr>
-    <tr>
-        <td rowspan="2" colspan="2">TimestampType</td>
-        <td>unit = MILLIS</td>
-        <td>TIMESTAMP_MILLIS</td>
-    </tr>
-    <tr>
-        <td>unit = MICROS</td>
-        <td>TIMESTAMP_MICROS</td>
-    </tr>
-</table>
 
 ### INTERVAL
 
@@ -374,13 +144,7 @@ example, there is no requirement that a large number of days should be
 expressed as a mix of months and days because there is not a constant
 conversion from days to months.
 
-The sort order used for `INTERVAL` is undefined. When writing data, no min/max
-statistics should be saved for this type and if such non-compliant statistics
-are found during reading, they must be ignored.
-
 ## Embedded Types
-
-Embedded types do not have type-specific orderings.
 
 ### JSON
 
@@ -390,8 +154,6 @@ string of valid JSON as defined by the [JSON specification][json-spec]
 
 [json-spec]: http://json.org/
 
-The sort order used for `JSON` is unsigned byte-wise comparison.
-
 ### BSON
 
 `BSON` is used for an embedded BSON document. It must annotate a `binary`
@@ -399,8 +161,6 @@ primitive type. The `binary` data is interpreted as an encoded BSON document as
 defined by the [BSON specification][bson-spec].
 
 [bson-spec]: http://bsonspec.org/spec.html
-
-The sort order used for `BSON` is unsigned byte-wise comparison.
 
 ## Nested Types
 
@@ -606,7 +366,3 @@ optional group my_map (MAP_KEY_VALUE) {
 }
 ```
 
-## Null
-Sometimes when discovering the schema of existing data values are always null and there's no type information.
-The `NULL` type can be used to annotates a column that is always null.
-(Similar to Null type in Avro)

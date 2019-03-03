@@ -257,11 +257,9 @@ struct DecimalType {
 /** Time units for logical types */
 struct MilliSeconds {}
 struct MicroSeconds {}
-struct NanoSeconds {}
 union TimeUnit {
   1: MilliSeconds MILLIS
   2: MicroSeconds MICROS
-  3: NanoSeconds NANOS
 }
 
 /**
@@ -277,7 +275,7 @@ struct TimestampType {
 /**
  * Time logical type annotation
  *
- * Allowed for physical types: INT32 (millis), INT64 (micros, nanos)
+ * Allowed for physical types: INT32 (millis), INT64 (micros)
  */
 struct TimeType {
   1: required bool isAdjustedToUTC
@@ -320,7 +318,7 @@ struct BsonType {
  * following table.
  */
 union LogicalType {
-  1:  StringType STRING       // use ConvertedType UTF8
+  1:  StringType STRING       // use ConvertedType UTF8 if encoding is UTF-8
   2:  MapType MAP             // use ConvertedType MAP
   3:  ListType LIST           // use ConvertedType LIST
   4:  EnumType ENUM           // use ConvertedType ENUM
@@ -333,7 +331,6 @@ union LogicalType {
   11: NullType UNKNOWN        // no compatible ConvertedType
   12: JsonType JSON           // use ConvertedType JSON
   13: BsonType BSON           // use ConvertedType BSON
-  14: UUIDType UUID
 }
 
 /**
@@ -384,7 +381,7 @@ struct SchemaElement {
   9: optional i32 field_id;
 
   /**
-   * The logical type of this SchemaElement
+   * The logical type of this SchemaElement; only valid for primitives.
    *
    * LogicalType replaces ConvertedType, but ConvertedType is still required
    * for some logical types to ensure forward-compatibility in format v1.
@@ -475,7 +472,6 @@ enum PageType {
   INDEX_PAGE = 1;
   DICTIONARY_PAGE = 2;
   DATA_PAGE_V2 = 3;
-  BLOOM_FILTER_PAGE = 4;
 }
 
 /**
@@ -555,38 +551,6 @@ struct DataPageHeaderV2 {
   8: optional Statistics statistics;
 }
 
-/** Block-based algorithm type annotation. **/
-struct SplitBlockAlgorithm {}
-/** The algorithm used in Bloom filter. **/
-union BloomFilterAlgorithm {
-  /** Block-based Bloom filter. **/
-  1: SplitBlockAlgorithm BLOCK;
-}
-/** Hash strategy type annotation. It uses Murmur3Hash_x64_128 from the original SMHasher
- * repo by Austin Appleby.
- **/
-struct Murmur3 {}
-/** 
- * The hash function used in Bloom filter. This function takes the hash of a column value
- * using plain encoding.
- **/
-union BloomFilterHash {
-  /** Murmur3 Hash Strategy. **/
-  1: Murmur3 MURMUR3;
-}
-/**
-  * Bloom filter header is stored at beginning of Bloom filter data of each column
-  * and followed by its bitset.
-  **/
-struct BloomFilterPageHeader {
-  /** The size of bitset in bytes **/
-  1: required i32 numBytes;
-  /** The algorithm for setting bits. **/
-  2: required BloomFilterAlgorithm algorithm;
-  /** The hash function used for Bloom filter. **/
-  3: required BloomFilterHash hash;
-}
-
 struct PageHeader {
   /** the type of the page: indicates which of the *_header fields is set **/
   1: required PageType type
@@ -607,7 +571,6 @@ struct PageHeader {
   6: optional IndexPageHeader index_page_header;
   7: optional DictionaryPageHeader dictionary_page_header;
   8: optional DataPageHeaderV2 data_page_header_v2;
-  9: optional BloomFilterPageHeader bloom_filter_page_header;
 }
 
 /**
@@ -694,10 +657,24 @@ struct ColumnMetaData {
    * This information can be used to determine if all data pages are
    * dictionary encoded for example **/
   13: optional list<PageEncodingStats> encoding_stats;
-
-  /** Byte offset from beginning of file to Bloom filter data. **/
-  14: optional i64 bloom_filter_offset;
 }
+
+struct EncryptionWithFooterKey {
+}
+
+struct EncryptionWithColumnKey {
+  /** Column path in schema **/
+  1: required list<string> path_in_schema
+  
+  /** Metadata of the column-specific key **/
+  2: optional binary key_metadata
+}
+
+union ColumnCryptoMetaData {
+  1: EncryptionWithFooterKey ENCRYPTION_WITH_FOOTER_KEY
+  2: EncryptionWithColumnKey ENCRYPTION_WITH_COLUMN_KEY
+}
+
 
 struct ColumnChunk {
   /** File where column data is stored.  If not set, assumed to be same file as
@@ -725,6 +702,12 @@ struct ColumnChunk {
 
   /** Size of ColumnChunk's ColumnIndex, in bytes **/
   7: optional i32 column_index_length
+  
+  /** Crypto metadata of encrypted columns **/
+  8: optional ColumnCryptoMetaData crypto_metadata
+  
+  /** Encrypted column metadata for this chunk **/
+  9: optional binary encrypted_column_metadata
 }
 
 struct RowGroup {
@@ -743,6 +726,16 @@ struct RowGroup {
    * The sorting columns can be a subset of all the columns.
    */
   4: optional list<SortingColumn> sorting_columns
+
+  /** Byte offset from beginning of file to first page (data or dictionary)
+   * in this row group **/
+  5: optional i64 file_offset
+
+  /** Total byte size of all compressed column data in this row group **/
+  6: optional i64 total_compressed_size
+
+  /** Row group ordinal in the file **/
+  7: optional i16 ordinal
 }
 
 /** Empty struct to signal the order defined by the physical or logical type */
@@ -871,6 +864,38 @@ struct ColumnIndex {
   5: optional list<i64> null_counts
 }
 
+struct AesGcmV1 {
+  /** AAD prefix **/
+  1: optional binary aad_prefix
+
+  /** Unique file identifier part of AAD suffix **/
+  2: optional binary aad_file_unique
+  
+  /** In files encrypted with AAD prefix without storing it,
+   * readers must supply the prefix **/
+  3: optional bool supply_aad_prefix
+}
+
+struct AesGcmCtrV1 {
+  /** AAD prefix **/
+  1: optional binary aad_prefix
+
+  /** Unique file identifier part of AAD suffix **/
+  2: optional binary aad_file_unique
+  
+  /** In files encrypted with AAD prefix without storing it,
+   * readers must supply the prefix **/
+  3: optional bool supply_aad_prefix
+}
+
+
+union EncryptionAlgorithm {
+  1: AesGcmV1 AES_GCM_V1
+  2: AesGcmCtrV1 AES_GCM_CTR_V1
+}
+
+
+
 /**
  * Description for file metadata
  */
@@ -903,9 +928,8 @@ struct FileMetaData {
 
   /**
    * Sort order used for the min_value and max_value fields of each column in
-   * this file. Sort orders are listed in the order matching the columns in the
-   * schema. The indexes are not necessary the same though, because only leaf
-   * nodes of the schema are represented in the list of sort orders.
+   * this file. Each sort order corresponds to one column, determined by its
+   * position in the list, matching the position of the column in the schema.
    *
    * Without column_orders, the meaning of the min_value and max_value fields is
    * undefined. To ensure well-defined behaviour, if min_value and max_value are
@@ -914,6 +938,33 @@ struct FileMetaData {
    * The obsolete min and max fields are always sorted by signed comparison
    * regardless of column_orders.
    */
-  7: optional list<ColumnOrder> column_orders;
+  7: optional list<ColumnOrder> column_orders
+
+  /** 
+   * Encryption algorithm. This field is set only in encrypted files
+   * with plaintext footer. Files with encrypted footer store algorithm id
+   * in FileCryptoMetaData structure.
+   */
+  8: optional EncryptionAlgorithm encryption_algorithm
+
+  /** 
+   * Retrieval metadata of key used for signing the footer. 
+   * Used only in encrypted files with plaintext footer. 
+   */ 
+  9: optional binary footer_signing_key_metadata
+}
+
+/** Crypto metadata for files with encrypted footer **/
+struct FileCryptoMetaData {
+  /** 
+   * Encryption algorithm. This field is only used for files
+   * with encrypted footer. Files with plaintext footer store algorithm id
+   * inside footer (FileMetaData structure).
+   */
+  1: required EncryptionAlgorithm encryption_algorithm
+    
+  /** Retrieval metadata of key used for encryption of footer, 
+   *  and (possibly) columns **/
+  2: optional binary key_metadata
 }
 
